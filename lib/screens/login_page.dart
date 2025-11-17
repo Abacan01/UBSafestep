@@ -77,274 +77,74 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
   }
-
-  // Account Linking Methods
-  Future<void> _linkGoogleAccountToExistingUser({
-    required GoogleSignInAuthentication googleAuth,
-    required String userEmail,
-  }) async {
-    final shouldLink = await showDialog<bool>(
+  
+  Future<void> _showVerificationDialog(String email) async {
+    return showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Account Found'),
-        content: const Text(
-          'An account already exists with this email using email/password. '
-              'Would you like to link your Google account to this existing account? '
-              'This will allow you to sign in with either method.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Link Accounts'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldLink != true) {
-      await _googleSignIn.signOut();
-      return;
-    }
-
-    final password = await _showPasswordVerificationDialog();
-    if (password == null) {
-      await _googleSignIn.signOut();
-      return;
-    }
-
-    try {
-      final emailCredential = EmailAuthProvider.credential(
-        email: userEmail,
-        password: password,
-      );
-
-      final userCredential = await _auth.signInWithCredential(emailCredential);
-
-      final googleCredential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await userCredential.user!.linkWithCredential(googleCredential);
-
-      await _continueToAppAfterAuth(userEmail);
-
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'wrong-password') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Incorrect password. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to link accounts: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      await _googleSignIn.signOut();
-      await _auth.signOut();
-    }
-  }
-
-  Future<String?> _showPasswordVerificationDialog() async {
-    final passwordController = TextEditingController();
-
-    return showDialog<String?>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Verify Your Account'),
-        content: TextField(
-          controller: passwordController,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Enter your password',
-            hintText: 'Please enter your current password',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(passwordController.text),
-            child: const Text('Verify'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _proceedWithGoogleSignIn(
-      GoogleSignInAuthentication googleAuth,
-      String userEmail
-      ) async {
-    final credential = GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
-    );
-
-    final userCredential = await _auth.signInWithCredential(credential);
-
-    if (userCredential.user != null && mounted) {
-      await _continueToAppAfterAuth(userEmail);
-    }
-  }
-
-  Future<void> _continueToAppAfterAuth(String userEmail) async {
-    final existingParent = await _firestoreService.getParentGuardianByUBmail(userEmail);
-
-    if (existingParent != null) {
-      _navigateToMainNavigation(
-        userData: existingParent,
-        userId: existingParent['ParentGuardianID'],
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => NameSetupScreen(
-            userEmail: userEmail,
-            studentInfo: _createStudentInfoFromEmail(userEmail),
-          ),
-        ),
-      );
-    }
-  }
-
-  // Google Sign-In with Account Linking
-  void _handleGoogleSignIn() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isGoogleLoading = true;
-    });
-
-    try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      if (googleUser == null) {
-        setState(() {
-          _isGoogleLoading = false;
-        });
-        return;
-      }
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final String userEmail = googleUser.email.toLowerCase();
-
-      if (!_isValidUbStudentEmail(userEmail)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Only UB student email accounts are allowed for parent access.'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 4),
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Verify Your Email'),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text('A verification link has been sent to your email at $email.'),
+                const Text('Please click the link to complete your registration before logging in.'),
+              ],
             ),
-          );
-        }
-        await _googleSignIn.signOut();
-        return;
-      }
-
-      try {
-        final list = await _auth.fetchSignInMethodsForEmail(userEmail);
-
-        if (list.isNotEmpty && list.contains('password')) {
-          await _linkGoogleAccountToExistingUser(
-            googleAuth: googleAuth,
-            userEmail: userEmail,
-          );
-        } else {
-          await _proceedWithGoogleSignIn(googleAuth, userEmail);
-        }
-      } catch (error) {
-        await _proceedWithGoogleSignIn(googleAuth, userEmail);
-      }
-
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Google Sign-In failed: ${error.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isGoogleLoading = false;
-        });
-      }
-    }
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
-  // Enhanced Password Validation Methods
-  String? _validateUbStudentEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter student email';
-    }
-
-    final email = value.trim().toLowerCase();
-    if (!email.contains('@') || !email.contains('.')) {
-      return 'Please enter a valid email address';
-    }
-
-    if (!email.endsWith('@ub.edu.ph')) {
-      return 'Only University of Batangas (@ub.edu.ph) emails are allowed';
-    }
-
-    if (!RegExp(r'^\d+@ub\.edu\.ph$').hasMatch(email)) {
-      return 'Please use valid student ID email format (e.g., 202310001@ub.edu.ph)';
-    }
-
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter a password';
-    }
-    if (value.length < 6) {
-      return 'Password must be at least 6 characters';
-    }
-    if (!_containsSpecialCharacter(value)) {
-      return 'Password must include at least one special character (!@#\$%^&* etc.)';
-    }
-    return null;
-  }
-
-  String? _validateConfirmPassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please confirm your password';
-    }
-    if (value != _passwordController.text) {
-      return 'Passwords do not match';
-    }
-    return null;
-  }
-
-  bool _containsSpecialCharacter(String password) {
-    final specialCharRegex = RegExp(r'[!@#$%^&*(),.?":{}|<>]');
-    return specialCharRegex.hasMatch(password);
-  }
-
-  Map<String, dynamic> _createStudentInfoFromEmail(String email) {
-    final studentId = email.split('@').first;
-    return {
-      'studentName': 'Student $studentId',
-      'course': 'University of Batangas',
-      'studentId': studentId,
-    };
+  Future<void> _showResendVerificationDialog(User user) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Email Not Verified'),
+          content: const SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text('Your email has not been verified.'),
+                Text('Please check your email or resend the verification link.'),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Resend Email'),
+              onPressed: () async {
+                await user.sendEmailVerification();
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Verification email sent!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Email/Password Sign Up
@@ -392,33 +192,15 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final existingParent = await _firestoreService.getParentGuardianByUBmail(email);
-
-      if (existingParent != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('An account with this email already exists. Please login instead.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
       final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      if (userCredential.user != null && mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => NameSetupScreen(
-              userEmail: email,
-              studentInfo: _createStudentInfoFromEmail(email),
-            ),
-          ),
-        );
+      final User? user = userCredential.user;
+      if (user != null && mounted) {
+        await user.sendEmailVerification();
+        await _showVerificationDialog(user.email!);
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Sign up failed. Please try again.';
@@ -450,33 +232,63 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // Universal login continuation logic
+  Future<void> _continueAfterLogin(User user) async {
+    await user.reload();
+    final freshUser = _auth.currentUser;
+
+    if (freshUser == null) {
+      await _auth.signOut();
+      return;
+    }
+
+    if (!freshUser.emailVerified) {
+      await _showResendVerificationDialog(freshUser);
+      await _auth.signOut();
+      return;
+    }
+
+    final existingParent = await _firestoreService.getParentGuardianByUBmail(freshUser.email!);
+
+    if (existingParent != null) {
+      final studentId = _getStudentIdFromEmail(freshUser.email!);
+
+      if (freshUser.displayName != null && freshUser.displayName!.isNotEmpty) {
+        final nameParts = freshUser.displayName!.split(' ');
+        final firstName = nameParts.isNotEmpty ? nameParts.first : freshUser.displayName!;
+        final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+
+        await _firestoreService.updateStudentName(
+            studentId: studentId,
+            firstName: firstName,
+            lastName: lastName,
+        );
+      }
+
+      final studentData = await _firestoreService.getStudentData(studentId);
+      final fullUserData = {...existingParent, ...studentData ?? {}};
+
+      _navigateToMainNavigation(
+        userData: fullUserData,
+        userId: existingParent['ParentGuardianID'],
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NameSetupScreen(
+            userEmail: freshUser.email!,
+            userDisplayName: freshUser.displayName,
+            studentInfo: _createStudentInfoFromEmail(freshUser.email!, freshUser.displayName),
+          ),
+        ),
+      );
+    }
+  }
+
   // Email/Password Login
   void _handleLogin() async {
     if (!mounted) return;
-
-    final String email = _emailController.text.trim().toLowerCase();
-    final String password = _passwordController.text;
-
-    final emailValidation = _validateUbStudentEmail(email);
-    if (emailValidation != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(emailValidation),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your password'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
 
     setState(() {
       _isLoading = true;
@@ -484,27 +296,12 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+        email: _emailController.text.trim().toLowerCase(),
+        password: _passwordController.text,
       );
 
       if (userCredential.user != null && mounted) {
-        final existingParent = await _firestoreService.getParentGuardianByUBmail(email);
-
-        if (existingParent != null) {
-          _navigateToMainNavigation(
-            userData: existingParent,
-            userId: existingParent['ParentGuardianID'],
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account data not found. Please contact support.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          await _auth.signOut();
-        }
+        await _continueAfterLogin(userCredential.user!);
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Login failed. Please try again.';
@@ -536,6 +333,51 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // Google Sign-In with Account Linking
+  void _handleGoogleSignIn() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isGoogleLoading = true;
+    });
+
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        if(mounted) setState(() => _isGoogleLoading = false);
+        return;
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+
+      if (userCredential.user != null && mounted) {
+        await _continueAfterLogin(userCredential.user!);
+      }
+
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google Sign-In failed: ${error.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGoogleLoading = false;
+        });
+      }
+    }
+  }
+
   // Navigation
   void _navigateToMainNavigation({
     required Map<String, dynamic> userData,
@@ -551,11 +393,72 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+  String _getStudentIdFromEmail(String email) {
+    return email.split('@').first;
+  }
 
+  Map<String, dynamic> _createStudentInfoFromEmail(String email, String? displayName) {
+    final studentId = email.split('@').first;
+    return {
+      'studentName': displayName ?? 'Student $studentId',
+      'studentId': studentId,
+    };
+  }
+
+  // Enhanced Password Validation Methods
   bool _isValidUbStudentEmail(String email) {
     final String cleanEmail = email.trim().toLowerCase();
     return cleanEmail.endsWith('@ub.edu.ph') &&
         RegExp(r'^\d+@ub\.edu\.ph$').hasMatch(cleanEmail);
+  }
+
+  String? _validateUbStudentEmail(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter student email';
+    }
+
+    final email = value.trim().toLowerCase();
+    if (!email.contains('@') || !email.contains('.')) {
+      return 'Please enter a valid email address';
+    }
+
+    if (!email.endsWith('@ub.edu.ph')) {
+      return 'Only University of Batangas (@ub.edu.ph) emails are allowed';
+    }
+
+    if (!RegExp(r'^\d+@ub\.edu\.ph$').hasMatch(email)) {
+      return 'Please use valid student ID email format (e.g., 202310001@ub.edu.ph)';
+    }
+
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter a password';
+    }
+    if (value.length < 6) {
+      return 'Password must be at least 6 characters';
+    }
+    if (!_containsSpecialCharacter(value)) {
+      return 'Password must include at least one special character (!@#\$%^&* etc.)';
+    }
+    return null;
+  }
+
+  String? _validateConfirmPassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please confirm your password';
+    }
+    if (value != _passwordController.text) {
+      return 'Passwords do not match';
+    }
+    return null;
+  }
+
+  bool _containsSpecialCharacter(String password) {
+    final specialCharRegex = RegExp(r'[!@#\$%^&*(),.?":{}|<>]');
+    return specialCharRegex.hasMatch(password);
   }
 
   void _toggleSignUp() {
@@ -618,7 +521,7 @@ class _LoginPageState extends State<LoginPage> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  hintText: '2000118@ub.edu.ph',
+                  hintText: 'enter UBmail',
                 ),
                 keyboardType: TextInputType.emailAddress,
                 autovalidateMode: AutovalidateMode.onUserInteraction,

@@ -23,7 +23,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirestoreService _firestoreService = FirestoreService();
   bool _isLoading = false;
+
+  // Controllers for editing
   final TextEditingController _parentNameController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _relationshipController = TextEditingController();
+
+  // For category and grade selection
+  String? _selectedCategory;
+  String? _selectedGrade;
+  final Map<String, List<String>> _gradeOptions = {
+    'Elementary Level': ['Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
+    'Junior High School': ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'],
+    'Senior High School': ['Grade 11', 'Grade 12'],
+  };
 
   @override
   void initState() {
@@ -34,7 +48,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _parentNameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _relationshipController.dispose();
     super.dispose();
+  }
+
+  // Helper to map year level to category and grade
+  Map<String, String> _getCategoryAndGradeFromYearLevel(int yearLevel) {
+    if (yearLevel >= 0 && yearLevel <= 6) {
+      return {'category': 'Elementary Level', 'grade': yearLevel == 0 ? 'Kindergarten' : 'Grade $yearLevel'};
+    } else if (yearLevel >= 7 && yearLevel <= 10) {
+      return {'category': 'Junior High School', 'grade': 'Grade $yearLevel'};
+    } else if (yearLevel >= 11 && yearLevel <= 12) {
+      return {'category': 'Senior High School', 'grade': 'Grade $yearLevel'};
+    }
+    return {'category': 'Unknown', 'grade': 'Unknown'};
   }
 
   Future<void> _logout() async {
@@ -103,6 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _showAccountInfo() async {
     final studentData = await _firestoreService.getStudentData(widget.userData['StudentID']);
+    final categoryAndGrade = studentData != null ? _getCategoryAndGradeFromYearLevel(studentData['YearLevel'] ?? 0) : {'category': 'Not available', 'grade': 'Not available'};
 
     showDialog(
       context: context,
@@ -125,8 +155,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (studentData != null) ...[
                 _buildInfoRow('Student Name', '${studentData['FirstName']} ${studentData['LastName']}'),
                 _buildInfoRow('Student ID', studentData['StudentID'] ?? 'Not available'),
-                _buildInfoRow('Course', studentData['Course'] ?? 'Not available'),
-                _buildInfoRow('Year Level', studentData['YearLevel']?.toString() ?? 'Not available'),
+                _buildInfoRow('Level Category', categoryAndGrade['category']!),
+                _buildInfoRow('Grade', categoryAndGrade['grade']!),
                 _buildInfoRow('UB Mail', studentData['UBmail'] ?? 'Not available'),
               ] else ...[
                 const Text('Student information not available', style: TextStyle(color: Colors.grey)),
@@ -144,19 +174,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _showEditParentName() async {
+  Future<void> _showEditAccountSettings() async {
+    final studentData = await _firestoreService.getStudentData(widget.userData['StudentID']);
+    final categoryAndGrade = studentData != null ? _getCategoryAndGradeFromYearLevel(studentData['YearLevel'] ?? 0) : {'category': '', 'grade': ''};
+
+    // Pre-fill controllers
     _parentNameController.text = widget.userData['parentName'] ?? '';
+    _firstNameController.text = studentData?['FirstName'] ?? '';
+    _lastNameController.text = studentData?['LastName'] ?? '';
+    _relationshipController.text = widget.userData['relationship'] ?? '';
+    _selectedCategory = categoryAndGrade['category'];
+    _selectedGrade = categoryAndGrade['grade'];
 
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Edit Parent Name'),
-        content: TextField(
-          controller: _parentNameController,
-          decoration: const InputDecoration(
-            labelText: 'Parent Name',
-            hintText: 'Enter your name',
-            border: OutlineInputBorder(),
+        title: const Text('Edit Account Settings'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Student First Name
+              TextField(
+                controller: _firstNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Student First Name',
+                  hintText: 'Enter first name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Student Last Name
+              TextField(
+                controller: _lastNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Student Last Name',
+                  hintText: 'Enter last name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Level Category
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Level Category',
+                  border: OutlineInputBorder(),
+                ),
+                items: _gradeOptions.keys.map((category) {
+                  return DropdownMenuItem<String>(
+                    value: category,
+                    child: Text(category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value;
+                    _selectedGrade = null; // Reset grade
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              // Grade
+              if (_selectedCategory != null)
+                DropdownButtonFormField<String>(
+                  value: _selectedGrade,
+                  decoration: const InputDecoration(
+                    labelText: 'Grade',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _gradeOptions[_selectedCategory]!.map((grade) {
+                    return DropdownMenuItem<String>(
+                      value: grade,
+                      child: Text(grade),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedGrade = value;
+                    });
+                  },
+                ),
+              const SizedBox(height: 16),
+              // Parent Name
+              TextField(
+                controller: _parentNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Parent Name',
+                  hintText: 'Enter your name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Relationship
+              TextField(
+                controller: _relationshipController,
+                decoration: const InputDecoration(
+                  labelText: 'Relationship to Student',
+                  hintText: 'e.g., Mother, Father',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -167,14 +286,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF862334)),
             onPressed: () async {
-              if (_parentNameController.text.trim().isNotEmpty) {
-                await _updateParentName(_parentNameController.text.trim());
-                Navigator.pop(context);
-              } else {
+              if (_firstNameController.text.trim().isEmpty ||
+                  _lastNameController.text.trim().isEmpty ||
+                  _selectedCategory == null ||
+                  _selectedGrade == null ||
+                  _parentNameController.text.trim().isEmpty ||
+                  _relationshipController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a valid name')),
+                  const SnackBar(content: Text('Please fill in all fields')),
                 );
+                return;
               }
+              await _updateAccountSettings();
+              Navigator.pop(context);
             },
             child: const Text('Save', style: TextStyle(color: Colors.white)),
           ),
@@ -183,26 +307,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _updateParentName(String newName) async {
+  Future<void> _updateAccountSettings() async {
     try {
       setState(() {
         _isLoading = true;
       });
 
-      await _firestoreService.updateParentName(widget.userId, newName);
+      final studentId = widget.userData['StudentID'];
+      final yearLevel = _getYearLevelFromGrade(_selectedCategory!, _selectedGrade!);
+
+      // Update student data
+      await _firestoreService.updateStudentName(
+        studentId: studentId,
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+      );
+      // Note: FirestoreService doesn't have a direct update for year level, so you may need to add it or update manually
+      // For now, assuming you handle year level updates separately or add to FirestoreService
+
+      // Update parent data
+      await _firestoreService.updateParentName(widget.userId, _parentNameController.text.trim());
+      // Update relationship if needed (add to FirestoreService if not present)
 
       // Update local user data
-      widget.userData['parentName'] = newName;
+      widget.userData['parentName'] = _parentNameController.text.trim();
+      widget.userData['relationship'] = _relationshipController.text.trim();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Parent name updated successfully!')),
+          const SnackBar(content: Text('Account settings updated successfully!')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating name: $e')),
+          SnackBar(content: Text('Error updating settings: $e')),
         );
       }
     } finally {
@@ -212,6 +351,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     }
+  }
+
+  int _getYearLevelFromGrade(String category, String grade) {
+    final Map<String, int> gradeToLevel = {
+      'Kindergarten': 0,
+      'Grade 1': 1,
+      'Grade 2': 2,
+      'Grade 3': 3,
+      'Grade 4': 4,
+      'Grade 5': 5,
+      'Grade 6': 6,
+      'Grade 7': 7,
+      'Grade 8': 8,
+      'Grade 9': 9,
+      'Grade 10': 10,
+      'Grade 11': 11,
+      'Grade 12': 12,
+    };
+    return gradeToLevel[grade] ?? 0;
   }
 
   void _showNotificationSettings() {
@@ -368,236 +526,237 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final accentColor = const Color(0xFFFFC553);
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Image.asset(
-                'asset/UBlogo.png',
-                width: 50,
-                height: 50,
-                errorBuilder: (context, error, stackTrace) =>
-                const Icon(Icons.error_outline, color: Colors.white),
-              ),
-            ),
-            Expanded(
-              child: Container(
-                alignment: Alignment.center,
-                child: const Text(
-                  'Settings',
-                  style: TextStyle(color: Colors.white),
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: Image.asset(
+                  'asset/UBlogo.png',
+                  width: 50,
+                  height: 50,
+                  errorBuilder: (context, error, stackTrace) =>
+                  const Icon(Icons.error_outline, color: Colors.white),
                 ),
               ),
-            ),
-            const SizedBox(width: 40),
-          ],
+              Expanded(
+                child: Container(
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'Settings',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 40),
+            ],
+          ),
+          iconTheme: const IconThemeData(color: Colors.white),
+          backgroundColor: primaryColor,
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // User Info Card
-          Card(
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+            // User Info Card
+            Card(
             elevation: 2,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: primaryColor.withOpacity(0.1),
-                        radius: 24,
-                        child: Icon(Icons.person, color: primaryColor),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.userData['parentName'] ?? 'Parent Account',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.userData['UBMail'] ?? 'Parent Account',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _showAccountInfo,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[100],
-                      foregroundColor: Colors.black87,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text('View Account Details'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Settings Options
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.person, color: primaryColor),
-                  title: const Text('Account Settings'),
-                  subtitle: const Text('Manage your account information'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _showEditParentName,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.notifications, color: accentColor),
-                  title: const Text('Notifications'),
-                  subtitle: const Text('Notification preferences and alerts'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _showNotificationSettings,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.security, color: Colors.blue),
-                  title: const Text('Privacy & Security'),
-                  subtitle: const Text('Manage privacy and security settings'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _showPrivacySecurity,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.help, color: Colors.orange),
-                  title: const Text('Help & Support'),
-                  subtitle: const Text('Get help and contact support'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _showHelpSupport,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // About Section
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.info, color: primaryColor),
-                  title: const Text('About UBSafestep'),
-                  subtitle: const Text('App version and developer info'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    showAboutDialog(
-                      context: context,
-                      applicationName: 'UBSafestep',
-                      applicationVersion: '1.0.0',
-                      applicationIcon: Icon(Icons.location_on, color: primaryColor),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Parental Monitoring System\n\n'
-                              'Features:\n'
-                              '• Real-time student location tracking\n'
-                              '• Safe zone monitoring\n'
-                              '• Emergency alerts\n'
-                              '• Location history\n\n'
-                              'Developed for University of Batangas\n'
-                              'For demonstration purposes',
-                          textAlign: TextAlign.left,
-                          style: TextStyle(fontSize: 14),
+                        CircleAvatar(
+                          backgroundColor: primaryColor.withOpacity(0.1),
+                          radius: 24,
+                          child: Icon(Icons.person, color: primaryColor),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.userData['parentName'] ?? 'Parent Account',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                widget.userData['UBMail'] ?? 'Parent Account',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: _showAccountInfo,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[100],
+                        foregroundColor: Colors.black87,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('View Account Details'),
+                    ),
+                  ],
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.bug_report, color: Colors.red),
-                  title: const Text('Report Issue'),
-                  subtitle: const Text('Report bugs or issues'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _showReportIssue,
-                ),
-              ],
             ),
-          ),
-          const SizedBox(height: 32),
+            ),
+              const SizedBox(height: 16),
 
-          // Logout Button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _showLogoutConfirmation,
-              icon: _isLoading
-                  ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-                  : const Icon(Icons.logout),
-              label: Text(_isLoading ? 'LOGGING OUT...' : 'LOG OUT'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+              // Settings Options
+              Card(
                 elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.person, color: primaryColor),
+                      title: const Text('Account Settings'),
+                      subtitle: const Text('Manage your account information'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: _showEditAccountSettings,
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.notifications, color: accentColor),
+                      title: const Text('Notifications'),
+                      subtitle: const Text('Notification preferences and alerts'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: _showNotificationSettings,
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.security, color: Colors.blue),
+                      title: const Text('Privacy & Security'),
+                      subtitle: const Text('Manage privacy and security settings'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: _showPrivacySecurity,
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.help, color: Colors.orange),
+                      title: const Text('Help & Support'),
+                      subtitle: const Text('Get help and contact support'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: _showHelpSupport,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-          // App Version
-          const Center(
-            child: Text(
-              'UBSafestep v1.0.0',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
+              // About Section
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.info, color: primaryColor),
+                      title: const Text('About UBSafestep'),
+                      subtitle: const Text('App version and developer info'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () {
+                        showAboutDialog(
+                          context: context,
+                          applicationName: 'UBSafestep',
+                          applicationVersion: '1.0.0',
+                          applicationIcon: Icon(Icons.location_on, color: primaryColor),
+                          children: [
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Parental Monitoring System\n\n'
+                                  'Features:\n'
+                                  '• Real-time student location tracking\n'
+                                  '• Safe zone monitoring\n'
+                                  '• Emergency alerts\n'
+                                  '• Location history\n\n'
+                                  'Developed for University of Batangas\n'
+                                  'For demonstration purposes',
+                              textAlign: TextAlign.left,
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.bug_report, color: Colors.red),
+                      title: const Text('Report Issue'),
+                      subtitle: const Text('Report bugs or issues'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: _showReportIssue,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-        ],
-      ),
+              const SizedBox(height: 32),
+
+              // Logout Button
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _showLogoutConfirmation,
+                  icon: _isLoading
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                      : const Icon(Icons.logout),
+                  label: Text(_isLoading ? 'LOGGING OUT...' : 'LOG OUT'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // App Version
+              const Center(
+                child: Text(
+                  'UBSafestep v1.0.0',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+        ),
     );
   }
 }

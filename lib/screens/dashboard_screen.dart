@@ -1,4 +1,3 @@
-// dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'map_screen.dart';
@@ -28,10 +27,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _studentData = widget.userData;
+    _isLoading = false;
     _loadStudentData();
-    // Refresh data every 30 seconds
-    _refreshTimer = Timer.periodic(Duration(seconds: 30), (timer) {
-      _loadStudentData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _loadStudentData(isRefresh: true);
     });
   }
 
@@ -41,23 +41,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _loadStudentData() async {
+  Future<void> _loadStudentData({bool isRefresh = false}) async {
+    if (!mounted) return;
+
+    if (!isRefresh) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
     try {
-      print('🔍 [DASHBOARD] Loading student data for: ${widget.userData['StudentID']}');
-
       final studentData = await _firestoreService.getStudentData(widget.userData['StudentID']);
-
-      if (mounted) {
+      if (mounted && studentData != null) {
+        final safezones = await _firestoreService.getSafezonesByParent(widget.userId);
+        studentData['safezonesExist'] = safezones.isNotEmpty;
         setState(() {
           _studentData = studentData;
-          _isLoading = false;
         });
       }
-
-      print('✅ [DASHBOARD] Student data loaded: ${studentData != null}');
     } catch (e) {
-      print('❌ [DASHBOARD] Error loading student data: $e');
-      if (mounted) {
+      print('Error loading student data: $e');
+    } finally {
+      if (mounted && !isRefresh) {
         setState(() {
           _isLoading = false;
         });
@@ -66,11 +71,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool get _isInSafeZone {
-    return _studentData?['isOutsideSafezone'] != true;
+    if (_studentData?['safezonesExist'] == false) {
+      return false;
+    }
+    return _studentData?['isOutsideSafezone'] == false;
   }
 
   String get _lastLocation {
-    return _studentData?['lastLocation'] ?? 'Unknown Location';
+    if (!_isInSafeZone) {
+      return _studentData?['lastLocation'] ?? 'Unknown Location';
+    }
+    return 'Within a Safezone';
   }
 
   String get _lastUpdateTime {
@@ -83,15 +94,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String get _studentName {
-    return _studentData?['FullName'] ??
-        widget.userData['childName'] ??
-        'UB Student';
+    if (_studentData != null) {
+      final firstName = _studentData!['FirstName'] ?? '';
+      final lastName = _studentData!['LastName'] ?? '';
+      final fullName = '$firstName $lastName'.trim();
+      if (fullName.isNotEmpty) {
+        return fullName;
+      }
+    }
+    return 'UB Student';
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = const Color(0xFF862334);
-    final accentColor = const Color(0xFFFFC553);
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -134,7 +150,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
 
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -225,7 +243,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '$_studentName is outside safezone!',
+                                '$_studentName is outside a safezone!',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[800],
@@ -238,6 +256,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   fontSize: 12,
                                   color: Colors.grey[600],
                                 ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2,
                               ),
                             ],
                           ),
@@ -327,17 +347,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         ],
                                       ),
                                     ),
-                                    if (_studentData?['Course'] != null) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Course: ${_studentData!['Course']}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ],
                                     if (_studentData?['YearLevel'] != null) ...[
+                                      const SizedBox(height: 4),
                                       Text(
                                         'Year: ${_studentData!['YearLevel']}',
                                         style: TextStyle(
@@ -383,6 +394,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           fontWeight: FontWeight.w600,
                                           color: Color(0xFF222222),
                                         ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 2,
                                       ),
                                     ],
                                   ),
@@ -433,7 +446,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Icons.refresh,
                           color: primaryColor,
                         ),
-                        onPressed: _isLoading ? null : _loadStudentData,
+                        onPressed: _isLoading ? null : () => _loadStudentData(),
                         tooltip: 'Refresh Status',
                       ),
                     ],
@@ -466,7 +479,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const SizedBox(width: 16),
                         _buildStatusIndicator(
                           'Location',
-                          _lastLocation.split(',')[0],
+                          _lastLocation,
                           Icons.location_pin,
                           Colors.purple,
                         ),
@@ -478,7 +491,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 24),
 
                 // View on map button
-                Container(
+                SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () {
@@ -512,46 +525,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
-
-                // Debug info (optional - remove in production)
-                if (_studentData != null) ...[
-                  const SizedBox(height: 16),
-                  Card(
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Debug Info:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Student ID: ${widget.userData['StudentID']}',
-                            style: TextStyle(fontSize: 10, color: Colors.grey),
-                          ),
-                          Text(
-                            'Parent ID: ${widget.userId}',
-                            style: TextStyle(fontSize: 10, color: Colors.grey),
-                          ),
-                          Text(
-                            'Outside Safezone: ${_studentData!['isOutsideSafezone']}',
-                            style: TextStyle(fontSize: 10, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -590,6 +563,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: color,
             ),
             textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
           ),
         ],
       ),

@@ -1,6 +1,7 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'firestore_service.dart';
+import 'package:geocoding/geocoding.dart';
 
 class LocationMonitorService {
   final FirestoreService _firestoreService = FirestoreService();
@@ -34,13 +35,6 @@ class LocationMonitorService {
           final zoneLocation = LatLng(zoneLat, zoneLng);
           final distance = calculateDistance(studentLocation, zoneLocation);
 
-          ('📍 Checking zone: ${zone['Zonename']}');
-          ('   - Zone location: $zoneLat, $zoneLng');
-          ('   - Student location: $studentLat, $studentLng');
-          ('   - Distance: ${distance.toStringAsFixed(2)}m');
-          ('   - Radius: ${radius}m');
-          ('   - Is within radius: ${distance <= radius}');
-
           if (distance <= radius) {
             return {
               'zone': zone,
@@ -55,24 +49,40 @@ class LocationMonitorService {
     return null;
   }
 
+  Future<String> _getAddressFromCoordinates(double lat, double lng) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(lat, lng);
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        return "${place.name}, ${place.street}, ${place.locality}, ${place.country}";
+      }
+      return 'Unknown Location';
+    } catch (e) {
+      print('Error getting address from coordinates: $e');
+      return 'Unknown Location';
+    }
+  }
+
   // Monitor and notify safezone status
   Future<void> checkAndNotifySafezoneStatus({
     required String studentId,
     required String parentGuardianId,
     required double studentLat,
     required double studentLng,
-    required String locationName,
   }) async {
     try {
-      // Get all safezones for this parent
       final safezones = await _firestoreService.getSafezonesByParent(parentGuardianId);
+      final locationName = await _getAddressFromCoordinates(studentLat, studentLng);
 
       if (safezones.isEmpty) {
-        print('⚠️ No safezones configured for parent: $parentGuardianId');
+        print('No safezones configured for parent: $parentGuardianId. Student is considered outside safezone.');
+        await _firestoreService.updateStudentSafezoneStatus(
+          studentId: studentId,
+          isOutsideSafezone: true,
+        );
         return;
       }
 
-      // Check if student is in any safezone
       final safezoneCheck = await checkStudentInSafezone(
         studentId: studentId,
         studentLat: studentLat,
@@ -80,53 +90,37 @@ class LocationMonitorService {
         safezones: safezones,
       );
 
-      // Get current student data to check previous status
       final studentData = await _firestoreService.getStudentData(studentId);
       final wasInSafezone = studentData?['isInSafeZone'] ?? false;
       final isInSafezone = safezoneCheck != null;
 
-      ('🔄 Safezone Status Check:');
-      ('   - Student: $studentId');
-      ('   - Was in safezone: $wasInSafezone');
-      ('   - Is in safezone: $isInSafezone');
-      ('   - Location: $locationName');
-
-      // Update student status
       await _firestoreService.updateStudentSafezoneStatus(
         studentId: studentId,
         isOutsideSafezone: !isInSafezone,
       );
 
-      // Send notifications only if status changed
       if (wasInSafezone != isInSafezone) {
         if (isInSafezone) {
-          // Student entered safezone
           final zoneName = safezoneCheck!['zone']['Zonename'];
           await _firestoreService.saveNotification(
             notificationId: _firestoreService.generateId(),
             parentGuardianId: parentGuardianId,
             studentId: studentId,
-            message: '✅ Student entered safezone: $zoneName at $locationName',
+            message: 'Student entered safezone: $zoneName at $locationName',
             emergencySOS: false,
           );
-          ('📨 Sent safezone entry notification for: $zoneName');
         } else {
-          // Student left safezone
           await _firestoreService.saveNotification(
             notificationId: _firestoreService.generateId(),
             parentGuardianId: parentGuardianId,
             studentId: studentId,
-            message: '🚨 Student left safezone area at $locationName',
-            emergencySOS: true, // Mark as emergency when leaving safezone
+            message: 'Student left safezone area at $locationName',
+            emergencySOS: true,
           );
-          ('📨 Sent safezone exit notification');
         }
-      } else {
-        ('ℹ️ No status change - no notification sent');
       }
-
     } catch (e) {
-      ('❌ Error in safezone monitoring: $e');
+      print('Error in safezone monitoring: $e');
     }
   }
 
@@ -135,7 +129,6 @@ class LocationMonitorService {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        ('❌ Location services are disabled');
         return null;
       }
 
@@ -143,13 +136,11 @@ class LocationMonitorService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          ('❌ Location permissions are denied');
           return null;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        ('❌ Location permissions are permanently denied');
         return null;
       }
 
@@ -157,7 +148,7 @@ class LocationMonitorService {
         desiredAccuracy: LocationAccuracy.best,
       );
     } catch (e) {
-      ('❌ Error getting location: $e');
+      print('Error getting location: $e');
       return null;
     }
   }

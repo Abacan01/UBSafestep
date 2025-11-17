@@ -13,7 +13,6 @@ class FirestoreService {
     required String studentId,
     required String firstName,
     required String lastName,
-    required String course,
     required int yearLevel,
     required String ubmail,
     required String password,
@@ -23,17 +22,34 @@ class FirestoreService {
         'StudentID': studentId,
         'FirstName': firstName,
         'LastName': lastName,
-        'Course': course,
         'YearLevel': yearLevel,
         'UBmail': ubmail,
         'Password': password,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true)); // Use merge to avoid overwriting existing fields
       print('Successfully saved student data: $ubmail');
     } catch (e) {
       print('Error saving student data: $e');
       throw 'Failed to save student data: $e';
+    }
+  }
+
+  Future<void> updateStudentName({
+    required String studentId,
+    required String firstName,
+    required String lastName,
+  }) async {
+    try {
+      await _firestore.collection('Students').doc(studentId).update({
+        'FirstName': firstName,
+        'LastName': lastName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      print('Successfully updated student name for ID: $studentId');
+    } catch (e) {
+      print('Error updating student name: $e');
+      throw 'Failed to update student name: $e';
     }
   }
 
@@ -68,6 +84,8 @@ class FirestoreService {
     required String studentId,
     required String ubmail,
     required String password,
+    required String parentName,
+    required String relationship,
   }) async {
     try {
       await _firestore.collection('Parents_Guardian').doc(parentGuardianId).set({
@@ -75,6 +93,8 @@ class FirestoreService {
         'StudentID': studentId,
         'UBMail': ubmail,
         'Password': password,
+        'parentName': parentName,
+        'relationship': relationship,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
