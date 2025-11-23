@@ -45,11 +45,6 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
     print('🚀 [SAFEZONES] Screen initialized for user: ${widget.userId}');
     print('📋 [SAFEZONES] User data: ${widget.userData}');
     _loadSafeZones();
-
-    // Remove the test call - comment this out:
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   _firestoreService.testSafezoneFlow(widget.userId);
-    // });
   }
 
   @override
@@ -117,6 +112,7 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
         builder: (context) => MapScreen(
           userData: widget.userData,
           userId: widget.userId,
+          isPickingMode: true,
         ),
       ),
     );
@@ -136,7 +132,6 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
     }
   }
 
-  // ADD THIS METHOD BACK - This is the main save method that was missing
   Future<void> _saveSafeZone() async {
     final zoneName = _nameController.text.trim();
     final address = _addressController.text.trim();
@@ -167,7 +162,7 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
     if (latitude == 0.0 || longitude == 0.0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please set valid coordinates'),
+          content: Text('Please pick a location on the map'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -195,15 +190,11 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
 
       print('✅ [SAFEZONES] Safezone saved successfully, reloading...');
 
-      // Close the dialog
       if (mounted) {
         Navigator.pop(context);
       }
 
-      // Wait a moment for Firestore to process
       await Future.delayed(const Duration(milliseconds: 500));
-
-      // Reload the safezones
       await _loadSafeZones();
 
       if (mounted) {
@@ -216,7 +207,6 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
         );
       }
 
-      // Reset form
       _nameController.clear();
       _addressController.clear();
       _latitudeController.clear();
@@ -359,46 +349,41 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Location Coordinates',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _latitudeController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Latitude',
-                                    border: OutlineInputBorder(),
-                                    hintText: '13.7565',
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                ),
+                              const Text(
+                                'Location',
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: _longitudeController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Longitude',
-                                    border: OutlineInputBorder(),
-                                    hintText: '121.0583',
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                ),
-                              ),
+                              if (_latitudeController.text.isNotEmpty)
+                                const Icon(Icons.check_circle, color: Colors.green, size: 16),
                             ],
                           ),
+                          if (_latitudeController.text.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                'Selected: ${_latitudeController.text}, ${_longitudeController.text}',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                              ),
+                            ),
                           const SizedBox(height: 8),
-                          ElevatedButton.icon(
-                            onPressed: _openMapForLocationPicking,
-                            icon: const Icon(Icons.map),
-                            label: const Text('Pick Location on Map'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _openMapForLocationPicking,
+                              icon: const Icon(Icons.map),
+                              label: Text(
+                                _latitudeController.text.isNotEmpty 
+                                  ? 'Change Location on Map' 
+                                  : 'Pick Location on Map'
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
                             ),
                           ),
                         ],
@@ -474,8 +459,6 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
     final radius = zone['Radius']?.toString() ?? '150';
     final email = zone['email'] ?? '';
 
-    print('🎨 [UI] Building card for: $zoneName');
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Card(
@@ -519,61 +502,57 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
                         fontSize: 14,
                         color: Colors.grey[600],
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (email.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'e-mail: $email',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[500],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Icon(
-                          Icons.radio_button_checked,
-                          size: 14,
-                          color: _getZoneColor(zoneName),
-                        ),
+                        Icon(Icons.radar, size: 16, color: Colors.grey[500]),
                         const SizedBox(width: 4),
                         Text(
                           'Radius: ${radius}m',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey[500],
+                            color: Colors.grey[600],
                           ),
                         ),
+                        if (isPredefined && email.isNotEmpty) ...[
+                          const SizedBox(width: 12),
+                          Icon(Icons.email, size: 16, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              email,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
                 ),
               ),
-              if (!isPredefined) ...[
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blue),
-                  onPressed: () => _showEditSafeZoneDialog(zone),
-                  tooltip: 'Edit Safezone',
+              if (!isPredefined)
+                Column(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blue),
+                      onPressed: () => _showEditSafeZoneDialog(zone),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _showDeleteConfirmation(
+                        zone['SafezoneID'],
+                        zoneName,
+                      ),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _showDeleteConfirmation(
-                    zone['SafezoneID'],
-                    zoneName,
-                  ),
-                  tooltip: 'Delete Safezone',
-                ),
-              ] else ...[
-                const Icon(
-                  Icons.lock,
-                  color: Colors.grey,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-              ],
             ],
           ),
         ),
@@ -581,156 +560,96 @@ class _SafeZonesScreenState extends State<SafeZonesScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Container(
-      margin: const EdgeInsets.only(top: 20),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.add_location_alt,
-            size: 48,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'No Custom Safezones',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Add your first safezone to get started',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
+  IconData _getZoneIcon(String name) {
+    final lowerName = name.toLowerCase();
+    if (lowerName.contains('home')) return Icons.home;
+    if (lowerName.contains('school') || lowerName.contains('university')) return Icons.school;
+    if (lowerName.contains('park')) return Icons.park;
+    return Icons.location_on;
   }
 
-  IconData _getZoneIcon(String zoneName) {
-    final name = zoneName.toLowerCase();
-    if (name.contains('home') || name.contains('house')) {
-      return Icons.home;
-    } else if (name.contains('school') || name.contains('university') || name.contains('college')) {
-      return Icons.school;
-    } else if (name.contains('work') || name.contains('office')) {
-      return Icons.work;
-    } else {
-      return Icons.location_on;
-    }
-  }
-
-  Color _getZoneColor(String zoneName) {
-    final name = zoneName.toLowerCase();
-    if (name.contains('home') || name.contains('house')) {
-      return Colors.blue;
-    } else if (name.contains('school') || name.contains('university') || name.contains('college')) {
-      return Colors.green;
-    } else if (name.contains('work') || name.contains('office')) {
-      return Colors.orange;
-    } else {
-      return Colors.purple;
-    }
+  Color _getZoneColor(String name) {
+    final lowerName = name.toLowerCase();
+    if (lowerName.contains('home')) return Colors.blue;
+    if (lowerName.contains('school') || lowerName.contains('university')) return const Color(0xFF862334);
+    if (lowerName.contains('park')) return Colors.green;
+    return Colors.orange;
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = const Color(0xFF862334);
 
-    print('🏗️ [UI] Building SafeZonesScreen with ${_safeZones.length} safezones');
-    print('🏗️ [UI] Loading state: $_isLoading');
-
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
-          'Safe Zones',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+          'Manage Safe Zones',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF862334),
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadSafeZones,
-            tooltip: 'Refresh',
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_location_alt),
-            onPressed: _showAddSafeZoneDialog,
-            tooltip: 'Add Safezone',
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading safe zones...'),
-          ],
-        ),
-      )
-          : Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Your Safe Zones',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
-              ),
-            ),
-          ),
-
-          // Safezones List
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                // Predefined UB Safezone (always shown)
-                _buildSafezoneCard(_ubSafezone, isPredefined: true),
-
-                // User's custom safezones
-                if (_safeZones.isNotEmpty)
-                  ..._safeZones.map((zone) => _buildSafezoneCard(zone)),
-
-                // Empty state for custom safezones
-                if (_safeZones.isEmpty)
-                  _buildEmptyState(),
-              ],
-            ),
-          ),
-        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddSafeZoneDialog,
         backgroundColor: primaryColor,
         child: const Icon(Icons.add, color: Colors.white),
       ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _safeZones.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.security, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No Safe Zones Yet',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add safe zones to monitor your child\'s location',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                      const SizedBox(height: 16),
+                      // Always show UB Predefined zone if list is empty? 
+                      // The logic below combines _ubSafezone.
+                    ],
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8.0),
+                      child: Text(
+                        'System Safe Zones',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    _buildSafezoneCard(_ubSafezone, isPredefined: true),
+                    const SizedBox(height: 16),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8.0),
+                      child: Text(
+                        'My Safe Zones',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    ..._safeZones.map((zone) => _buildSafezoneCard(zone)).toList(),
+                    const SizedBox(height: 60), // Space for FAB
+                  ],
+                ),
     );
   }
 }

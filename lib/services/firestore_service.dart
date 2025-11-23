@@ -53,6 +53,22 @@ class FirestoreService {
     }
   }
 
+  Future<void> updateStudentYearLevel({
+    required String studentId,
+    required int yearLevel,
+  }) async {
+    try {
+      await _firestore.collection('Students').doc(studentId).update({
+        'YearLevel': yearLevel,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      print('Successfully updated student year level for ID: $studentId');
+    } catch (e) {
+      print('Error updating student year level: $e');
+      throw 'Failed to update student year level: $e';
+    }
+  }
+
   Future<Map<String, dynamic>?> getStudentData(String studentId) async {
     try {
       final doc = await _firestore.collection('Students').doc(studentId).get();
@@ -168,13 +184,15 @@ class FirestoreService {
 
       // Check for duplicates by name AND coordinates (exact duplicate)
       final exactDuplicate = existingZones.any((zone) =>
-      zone['Zonename'] == zoneName &&
+      zone['SafezoneID'] != safezoneId && // Exclude current zone if editing
+          zone['Zonename'] == zoneName &&
           zone['Coordinates'] == coordinates
       );
 
       // Also check for duplicates by name only (prevent same name different location)
       final nameDuplicate = existingZones.any((zone) =>
-      zone['Zonename'] == zoneName
+      zone['SafezoneID'] != safezoneId && // Exclude current zone if editing
+          zone['Zonename'] == zoneName
       );
 
       if (exactDuplicate) {
@@ -438,6 +456,29 @@ class FirestoreService {
     }
   }
 
+  Future<void> saveAdminNotification({
+    required String notificationId,
+    required String studentId,
+    required String message,
+    required String type,
+  }) async {
+    try {
+      await _firestore.collection('AdminNotification').doc(notificationId).set({
+        'NotificationID': notificationId,
+        'StudentID': studentId,
+        'Message': message,
+        'Type': type, // 'PredefinedZoneEntry', 'PredefinedZoneExit'
+        'Timestamp': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'isRead': false,
+      });
+      print('Successfully saved admin notification: $message');
+    } catch (e) {
+      print('Error saving admin notification: $e');
+      // Don't throw, just log, as it's secondary
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getParentNotifications(String parentGuardianId) async {
     try {
       final query = await _firestore
@@ -450,6 +491,22 @@ class FirestoreService {
     } catch (e) {
       print('Error getting notifications: $e');
       return [];
+    }
+  }
+  
+  Future<Map<String, dynamic>?> getLastNotification(String parentGuardianId) async {
+    try {
+      final query = await _firestore
+          .collection('Notification')
+          .where('ParentGuardianID', isEqualTo: parentGuardianId)
+          .orderBy('Timestamp', descending: true)
+          .limit(1)
+          .get();
+
+      return query.docs.isNotEmpty ? query.docs.first.data() : null;
+    } catch (e) {
+      print('Error getting last notification: $e');
+      return null;
     }
   }
 

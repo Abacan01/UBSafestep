@@ -154,23 +154,40 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return 'General';
   }
 
-  Color _getNotificationColor(String type) {
-    switch (type) {
-      case 'Emergency':
-        return Colors.red;
-      case 'Zone Alerts':
-        return Colors.orange;
-      case 'Movement':
-        return Colors.blue;
-      default:
-        return Colors.grey;
+  Color _getNotificationColor(String type, Map<String, dynamic> notification) {
+    if (type == 'Emergency') {
+      return Colors.red;
     }
+    
+    final message = notification['Message']?.toString().toLowerCase() ?? '';
+    
+    if (message.contains('entered')) {
+      return Colors.green; // Entering safezone is green
+    } else if (message.contains('outside') || message.contains('left')) {
+      return Colors.orange; // Leaving or outside is orange
+    } else if (type == 'Zone Alerts') {
+      return Colors.orange;
+    } else if (type == 'Movement') {
+      return Colors.blue;
+    }
+    
+    return Colors.grey;
   }
 
-  IconData _getNotificationIcon(String type) {
+  IconData _getNotificationIcon(String type, Map<String, dynamic> notification) {
+    if (type == 'Emergency') {
+      return Icons.warning_rounded;
+    }
+    
+    final message = notification['Message']?.toString().toLowerCase() ?? '';
+    
+    if (message.contains('entered')) {
+      return Icons.location_on; // Safe inside
+    } else if (message.contains('outside') || message.contains('left')) {
+      return Icons.wrong_location; // Outside/Left
+    }
+    
     switch (type) {
-      case 'Emergency':
-        return Icons.warning_rounded;
       case 'Zone Alerts':
         return Icons.location_on;
       case 'Movement':
@@ -282,8 +299,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               itemBuilder: (context, index) {
                 final notification = _filteredNotifications[index];
                 final notificationType = _getNotificationType(notification);
-                final notifColor = _getNotificationColor(notificationType);
-                final notifIcon = _getNotificationIcon(notificationType);
+                final notifColor = _getNotificationColor(notificationType, notification);
+                final notifIcon = _getNotificationIcon(notificationType, notification);
                 final isRead = notification['isRead'] == true;
 
                 return Container(

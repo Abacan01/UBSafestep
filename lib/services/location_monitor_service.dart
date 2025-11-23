@@ -91,8 +91,12 @@ class LocationMonitorService {
       );
 
       final studentData = await _firestoreService.getStudentData(studentId);
-      final wasInSafezone = studentData?['isInSafeZone'] ?? false;
-      final isInSafezone = safezoneCheck != null;
+      
+      // CORRECTED LOGIC: Check 'isOutsideSafezone' field correctly
+      final bool wasOutsideSafezone = studentData?['isOutsideSafezone'] ?? true;
+      final bool wasInSafezone = !wasOutsideSafezone;
+      
+      final bool isInSafezone = safezoneCheck != null;
 
       await _firestoreService.updateStudentSafezoneStatus(
         studentId: studentId,
@@ -100,6 +104,7 @@ class LocationMonitorService {
       );
 
       if (wasInSafezone != isInSafezone) {
+        // STATUS CHANGE: ENTERED or LEFT
         if (isInSafezone) {
           final zoneName = safezoneCheck!['zone']['Zonename'];
           await _firestoreService.saveNotification(
@@ -117,6 +122,28 @@ class LocationMonitorService {
             message: 'Student left safezone area at $locationName',
             emergencySOS: true,
           );
+        }
+      } else if (!isInSafezone) {
+        // CONTINUOUSLY OUTSIDE: Check for significant movement to notify
+        // To avoid spamming, check the last notification
+        final lastNotification = await _firestoreService.getLastNotification(parentGuardianId);
+        
+        if (lastNotification != null) {
+          final lastMessage = lastNotification['Message'] as String;
+          
+          // If the last message was also about being outside or movement, check if location changed
+          if (lastMessage.contains('left safezone') || lastMessage.contains('outside safezone')) {
+            // We don't want to spam if the location description hasn't changed roughly
+            if (!lastMessage.contains(locationName)) {
+               await _firestoreService.saveNotification(
+                notificationId: _firestoreService.generateId(),
+                parentGuardianId: parentGuardianId,
+                studentId: studentId,
+                message: 'Student is outside safezone at $locationName',
+                emergencySOS: false, // Not an emergency, just an update
+              );
+            }
+          }
         }
       }
     } catch (e) {
