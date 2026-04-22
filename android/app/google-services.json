@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "11091845933",
+    "project_id": "ubsafestep-2200983",
+    "storage_bucket": "ubsafestep-2200983.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:11091845933:android:16ad77f134b6523d2569a4",
+        "android_client_info": {
+          "package_name": "com.example.ubtrackmychild"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_m7_6F7O3ias5HUWRZMg2ZmCGW3divUI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
